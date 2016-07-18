@@ -1,9 +1,17 @@
+Create Application:
+
 rails new app-name
 rails generate controller welcome index
 Change get 'welcome/index' to root 'welcome#index' in routes.rb
+
+start rails server and confirm home page shows
+
 git init
 git add -A
 git commit -m "Initial commit with home page"
+
+Deploy to Production:
+
 In gemfile move sqlite3 gem to development group and create production group:
 
 group :production do
@@ -14,4 +22,79 @@ end
 bundle install --without production
 
 create github repository for app-name
+
+git remote add origin https://github.com/Dragonicity/photo-app.git
+git push -u origin master
+
+heroku create
+heroku rename required-name
+
+git add -A
+git commit -m "Make ready for production"
+git push
+git push heroku master
+
+Build Authentication System:
+
+add gems to gemfile
+
+gem 'devise'
+gem 'twitter-bootstrap-rails'
+gem 'devise-bootstrap-views'
+
+bundle install
+
+rails generate devise:install
+rails generate devise User
+
+update migration file to allow for confirmable email authentication
+
+uncomment confirmable attributes in database migration file
+
+## Confirmable
+      t.string   :confirmation_token
+      t.datetime :confirmed_at
+      t.datetime :confirmation_sent_at
+      t.string   :unconfirmed_email # Only if using reconfirmable
+
+add confirmable option to User model:
+
+class User < ActiveRecord::Base
+  # Include default devise modules. Others available are:
+  # :confirmable, :lockable, :timeoutable and :omniauthable
+  devise :database_authenticatable, :registerable, :confirmable,
+         :recoverable, :rememberable, :trackable, :validatable
+end
+
+rake db:migrate
+
+restart rails server
+
+add line to application controller:
+
+before_action :authenticate_user!
+
+add line to welcome controller to skip authentication if needed
+
+skip_before_action :authenticate_user!, only: [:index]
+
+rails generate bootstrap:install static
+rails generate bootstrap:layout application (and confirm with Y)
+rails generate devise:views:locale en
+rails generate devise:views:bootstrap_templates
+
+add following to application.css stylesheet
+
+*= require devise_bootstrap_views
+
+go to sign_up page
+
+http://localhost:3000/users/sign_up
+
+
+
+
+
+
+
 
