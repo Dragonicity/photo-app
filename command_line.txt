@@ -1,4 +1,17 @@
-rails new photo-app
+rails new app-name
 rails generate controller welcome index
 Change get 'welcome/index' to root 'welcome#index' in routes.rb
+git init
+git add -A
+git commit -m "Initial commit with home page"
+In gemfile move sqlite3 gem to development group and create production group:
+
+group :production do
+  gem 'pg'
+  gem 'rails_12factor'
+end
+
+bundle install --without production
+
+create github repository for app-name
 
