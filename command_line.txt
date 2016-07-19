@@ -83,7 +83,7 @@ rails generate bootstrap:layout application (and confirm with Y)
 rails generate devise:views:locale en
 rails generate devise:views:bootstrap_templates
 
-add following to application.css stylesheet
+In the application.css file under app/assets/stylesheets folder, right above the line that says *= require_tree add in the following line:
 
 *= require devise_bootstrap_views
 
@@ -91,7 +91,60 @@ go to sign_up page
 
 http://localhost:3000/users/sign_up
 
+git add -A
+git commit -m "Add devise and styling"
+git push
 
+Production email:
+
+heroku addons:create sendgrid:starter
+
+Click on Sendgrid add-on in Heroku, go to settings, credentials and add username and password for account. Click Mail checkbox and click create credential button.
+
+heroku config:set SENDGRID_USERNAME=mark.nelson@dragonicity.com
+heroku config:set SENDGRID_PASSWORD=password
+
+ENter the following in the ~/.zshrc file:
+
+export SENDGRID_USERNAME=mark.nelson@dragonicity.com
+export SENDGRID_PASSWORD=password
+
+Create new terminal session to see environment variables and do set-up
+
+In config/environment.rb add the following code:
+
+ActionMailer::Base.smtp_settings = {
+  :address => 'smtp.sendgrid.net',
+  :port => '587',
+  :authentication => :plain,
+  :user_name => ENV['SENDGRID_USERNAME'],
+  :password => ENV['SENDGRID_PASSWORD'],
+  :domain => 'heroku.com',
+  :enable_starttls_auto => true
+}
+
+In config/environments/develop.rb add the following (under config.eager_load = false):
+
+config.action_mailer.delivery_method = :test
+config.action_mailer.default_url_options = { :host => 'http://localhost:3000' }
+
+In config/environments/production.rb add the following:
+
+config.action_mailer.delivery_method = :smtp
+config.action_mailer.default_url_options = { :host => 'dragon-photo-app.herokuapp.com', :protocol => 'htpps' }
+
+Sign-up to the application (should see message that email send to activate your account).
+
+If you get undefined local variable or method 'confirmed_at' for Devise error then reset datbase with:
+
+rake db:migrate:reset
+rake db:reset
+
+Select confirmation link from email details in server log and paste into browser
+
+http://localhost:3000/users/confirmation?confirmation_token=cMp2szSz2kAmci4QdayS&amp;locale=en
+
+You should see flash message Your account was successfully confirmed.
 
 
 
