@@ -281,10 +281,231 @@ In the application.html.erb page under app/views/layouts folder, change the foll
           <%= bootstrap_flash %>
           <%= yield %>
 
+Payment Integration
+
 Go to stripe.com and sign-up for an account
 
+add stripe gem: gem 'stripe'
+bundle install
+
+In config/initializers create a new file called stripe.rb and include the following code:
 
 
+Rails.configuration.stripe = {
+  :publishable_key => ENV['STRIPE_TEST_PUBLISHABLE_KEY'],
+  :secret_key      => ENV['STRIPE_TEST_SECRET_KEY']
+}
+
+Stripe.api_key = Rails.configuration.stripe[:secret_key]
+
+Add key environment variables to bash_resource file:
+
+export STRIPE_TEST_SECRET_KEY=sk_test_hh22z9yzFJPzBSVDwF6VMJZp
+export STRIPE_TEST_PUBLISHABLE_KEY=pk_test_PhrQ27ZSmvJI5qcEyFZnllnA
+
+The set environment keys on heroku:
+
+heroku config:set STRIPE_TEST_SECRET_KEY=sk_test_hh22z9yzFJPzBSVDwF6VMJZp
+
+Create payment model:
+
+rails generate model Payment email:string token:string user_id:integer
+rake db:migrate
+
+Include the following in the user model:
+
+has_one :payment
+accepts_nested_attributes_for :payment
+
+Include the following in the payment model:
+
+attr_accessor :card_number, :card_cvv, :card_expires_month, :card_expires_year
+
+belongs_to :user
+
+def self.month_options
+  Date::MONTHNAMES.compact.each_with_index.map { |name, i| ["#{i+1} - #{name}", i+1]}
+end
+
+def self.year_options
+  (Date.today.year..(Date.today.year+10)).to_a
+end
+  
+def process_payment
+  customer = Stripe::Customer.create email: email, card: token
+
+  Stripe::Charge.create customer: customer.id,
+                        amount: 1000,
+                        description: 'Premium',
+                        currency: 'usd'
+end
+
+Add fields to sign-up form:
+
+In devise/registrations/new.html.erb include the following before the f.submit:
+
+<%= fields_for(:payment) do |p| %>
+  <div class="row col-md-12">
+    <div class="form-group col-md-4 no-left-padding">
+      <%= p.label :card_number, "Card Number", data: { stripe: 'label'} %>
+      <%= p.text_field :card_number, class: "form-control", required: true, data: { stripe: 'number'} %>
+    </div>
+    <div class="form-group col-md-2">
+      <%= p.label :card_cvv, "Card CVV", data: { stripe: 'label'} %>
+        <%= p.text_field :card_cvv, class: "form-control", required: true, data: { stripe: 'cvv'} %>
+    </div>
+    <div class="form-group col-md-6">
+      <div class="col-md-12">
+        <%= p.label :card_expires, "Card Expires", data: { stripe: 'label'} %>
+      </div>
+      <div class="col-md-3">
+        <%= p.select :card_expires_month, options_for_select(Payment.month_options), 
+                      { include_blank: 'Month'},
+                      "data-stripe" => "exp-month",
+                      class: "form-control", required: true %>
+      </div>
+      <div class="col-md-3">
+        <%= p.select :card_expires_year, options_for_select(Payment.year_options.push), 
+                      { include_blank: 'Year'},
+                      class: "form-control", 
+                       data: { stripe: "exp-year" }, required: true %>
+      </div>
+    </div>
+  </div>
+<% end %>
+
+Javascript events for payments handling
+
+In views/layouts/application.html.erb include the following:
+
+<%= javascript_include_tag "https://js.stripe.com/v2/" %>
+
+In views/devise/registrations/new.html.erb include the following at the top:
+
+<script language="Javascript">
+  Stripe.setPublishableKey("<%= ENV['STRIPE_TEST_PUBLISHABLE_KEY'] %>");
+</script>
+
+Change line to the following:
+
+<%= form_for(resource, :as => resource_name, :url => registration_path(resource_name), html: { role: "form", class: 'cc_form' }) do |f| %>
+
+In app/assets/javascripts create a file called credit_card_form.js and include the following:
+
+$(document).ready(function() {
+
+  var show_error, stripeResponseHandler, submitHandler;
+
+  submitHandler = function (event) {
+    var $form = $(event.target);
+    $form.find("input[type=submit]").prop("disabled", true);
+
+    //If Stripe was initialized correctly this will create a token using the credit card info
+    if(Stripe){
+      Stripe.card.createToken($form, stripeResponseHandler);
+    } else {
+      show_error("Failed to load credit card processing functionality. Please reload this page in your browser.")
+    }
+    return false;
+  };
+
+  $(".cc_form").on('submit', submitHandler);
+
+  stripeResponseHandler = function (status, response) {
+    var token, $form;
+
+    $form = $('.cc_form');
+
+    if (response.error) {
+      console.log(response.error.message);
+      show_error(response.error.message);
+      $form.find("input[type=submit]").prop("disabled", false);
+    } else {
+      token = response.id;
+      $form.append($("<input type=\"hidden\" name=\"payment[token]\" />").val(token));
+      $("[data-stripe=number]").remove();
+      $("[data-stripe=cvv]").remove();
+      $("[data-stripe=exp-year]").remove();
+      $("[data-stripe=exp-month]").remove();
+      $("[data-stripe=label]").remove();
+      $form.get(0).submit();
+    }
+    return false;
+  };
+
+  show_error = function (message) {
+    if($("#flash-messages").size() < 1){
+      $('div.container.main div:first').prepend("<div id='flash-messages'></div>")
+    }
+    $("#flash-messages").html('<div class="alert alert-warning"><a class="close" data-dismiss="alert">×</a><div id="flash_alert">' + message + '</div></div>');
+    $('.alert').delay(5000).fadeOut(3000);  
+    return false;
+  };
+});
+
+Extend devise registrationscontroller. Add ap/controllers/registrations_controller.rb and include the following:
+
+lass RegistrationsController < Devise::RegistrationsController
+
+
+  def new
+  end
+
+  def create
+    build_resource(sign_up_params)
+    
+    resource.class.transaction do
+      resource.save
+      yield resource if block_given?
+      if resource.persisted?
+        @payment =Payment.new({ email: params["user"]["email"],
+          token: params[:payment]["token"], user_id: resource.id })
+        flash[:error] = "Please check registration errors" unless @payment.valid?
+
+        begin
+          @payment.process_payment
+          @payment.save
+        rescue Exception => e
+          flash[:error] = e.message
+
+          resource.destroy
+          puts 'Payment failed'
+          render :new and return
+        end
+
+        if resource.active_for_authentication?
+          set_flash_message :notice, :signed_up if is_flashing_format?
+          sign_up(resource_name, resource)
+          respond_with resource, location: after_sign_up_path_for(resource)
+        else
+          set_flash_message :notice, :"signed_up_but_#{resource.inactive_message}" if is_flashing_format?
+          expire_data_after_sign_in!
+          respond_with resource, location: after_inactive_sign_up_path_for(resource)
+        end
+      else
+        clean_up_passwords resource
+        set_minimum_password_length
+        respond_with resource
+      end
+    end
+  end
+
+  protected
+
+  def configure_permitted_parameters
+    devise_parameter_sanitizer.for(:sign_up).push(:payment)
+  end
+
+end
+
+Update the registrations route for devise users in the config/routes.rb file:
+
+devise_for :users, :controllers => { :registrations => 'registrations' }
+
+
+Issue with turbolinks not working with javascript again, so either remove/disable or have no-turbolinks qualifier:
+
+<%= link_to 'Sign Up', new_user_registration_path, class: 'btn btn-primary sign-up', data: {'no-turbolink' => true} %>
 
 
 
