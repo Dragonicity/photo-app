@@ -1,4 +1,4 @@
-Create Application:
+CREATE APPLICATION
 
 rails new app-name
 rails generate controller welcome index
@@ -34,7 +34,7 @@ git commit -m "Make ready for production"
 git push
 git push heroku master
 
-Build Authentication System:
+BUILD AUTHENTICATION SYSTEM
 
 add gems to gemfile
 
@@ -78,6 +78,8 @@ add line to welcome controller to skip authentication if needed
 
 skip_before_action :authenticate_user!, only: [:index]
 
+ADD BOOTSTRAP
+
 rails generate bootstrap:install static
 rails generate bootstrap:layout application (and confirm with Y)
 rails generate devise:views:locale en
@@ -95,7 +97,7 @@ git add -A
 git commit -m "Add devise and styling"
 git push
 
-Production email:
+PPRODUCTION EMAIL
 
 heroku addons:create sendgrid:starter
 
@@ -146,7 +148,7 @@ http://localhost:3000/users/confirmation?confirmation_token=cMp2szSz2kAmci4QdayS
 
 You should see flash message Your account was successfully confirmed.
 
-Update navigation to add relevant links:
+LOGIN AND LOGOUT
 
 In app/views/layouts.application.html.erb remove sidebar and then paste following text below links </ul>:
 
@@ -171,7 +173,7 @@ config.mailer_sender = 'please-change-me-at-config-initializers-devise@example.c
 
 to e.g. admin@dragonicity.com
 
-Test login and logout in development.
+Test login and logout in development:
 
 git add -A
 git commit -m "Set-up email funcitonality for sign-up"
@@ -185,7 +187,8 @@ heroku logs if error
 heroku config shows heroku environment variables
 (heroku run printenv will show all environment variables on heroku)
 
-Open your index.html.erb page under app/views/welcome folder and fill in the code (or add styling as you like):
+Open your index.html.erb page under app/views/welcome folder and fill in the code 
+(or add styling as you like):
 
 <% if current_user %>
   <h3>Welcome: <%= current_user.email %></h3>
@@ -281,7 +284,7 @@ In the application.html.erb page under app/views/layouts folder, change the foll
           <%= bootstrap_flash %>
           <%= yield %>
 
-Payment Integration
+PAYMENT INTEGRATION
 
 Go to stripe.com and sign-up for an account
 
@@ -506,6 +509,148 @@ devise_for :users, :controllers => { :registrations => 'registrations' }
 Issue with turbolinks not working with javascript again, so either remove/disable or have no-turbolinks qualifier:
 
 <%= link_to 'Sign Up', new_user_registration_path, class: 'btn btn-primary sign-up', data: {'no-turbolink' => true} %>
+
+IMAGE UPLOAD
+
+Add the following gems:
+
+gem 'carrierwave'
+gem 'mini_magick'
+gem 'fog'
+
+Bundle install
+
+rails generate scaffold Image name:string picture:string user:references
+
+rake db:migrate
+
+rails generate bootstrap:themed Images
+
+Update model files:
+
+Add has_many :images to user.rb
+
+rails generate uploader Picture
+
+Add mount_uploader :picture, PictureUploader to image.rb
+
+Add this to start of veiws/images_form.html.erb:
+
+%= form_for @image, :html => { multipart: true, 
+
+In same file change f.text_field line to the following:
+
+<%= f.file_field :picture, accept: 'image/jpeg, image/gif, image/png' %>
+
+In same file remove user_id form-group.
+
+Add following as 2nd line in create action in images_controller.rb
+
+@image.user = current_user
+
+In views/images/show.html.erb remove human_attribute)name for picture, add picture image, and remove user id so final code is:
+
+<dl class="dl-horizontal">
+  <dt><strong><%= model_class.human_attribute_name(:name) %>:</strong></dt>
+  <dd><%= @image.name %></dd>
+  <dt></dt>
+  <dd><%= image_tag(@image.picture.url, size: "300x300") if @image.picture? %></dd>
+</dl>
+
+Add validations to images. In app/uploaders/picture_uploade.rb uncomment whitelist.
+
+In image model file add:
+
+validate :picture_size
+
+  private
+    def picture_size
+      if picture.size > 5.megabytes
+        errors.add(:picture, "should beless than 5MB")
+      end
+    end
+
+Add javascript validation to end of _form.html.erb
+
+<script type="text/javascript">
+  $('#image_picture').bind('change', function() {
+    var size_in_megabytes = this.files[0].size/1024/1024;
+    if (size_in_megabytes > 5) {
+      alert('Maximum file size is 5MB.');
+    }
+  });
+</script>
+
+Update imagemagick with brew install minimagick
+
+Add picture resizing capability in app/uploaders/picture_uploade.rb uncomment 3rd include and add line:
+
+include CarrierWave::MiniMagick
+process resize_to_limit: [300, 300]
+
+Fix images index page to remove id, created at etc. and show image:
+
+<thead>
+    <tr>
+      <th><%= model_class.human_attribute_name(:name) %></th>
+      <th><%= model_class.human_attribute_name(:picture) %></th>
+      <th><%=t '.actions', :default => t("helpers.actions") %></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @images.each do |image| %>
+      <tr>
+        <td><%= link_to image.name, image_path(image) %></td>
+        <td><%= image_tag image.picture.url, size: "100x100" %></td>
+
+Handling images in production with Amazon S3:
+
+In picture_uploader.rb allow for use of fog gem in production:
+
+if Rails.env.production?
+  storage :fog
+else
+  storage :file
+end
+
+Sign-up for AWS and do IAM configuration.
+
+1) Create IAM user
+2) Create S3 bucket
+3) Create policy with s3 bucket details
+4) Attach policy to IAM user created
+
+Here is a sample policy, replace the code with your s3 bucket name as needed below:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+  {
+    "Effect": "Allow",
+    "Action": "s3:*",
+    "Resource": [
+    "arn:aws:s3:::yours3bucketname",
+    "arn:aws:s3:::yours3bucketname/*"
+    ]
+  },
+  {
+    "Effect": "Allow",
+    "Action": "s3:ListAllMyBuckets",
+    "Resource": "arn:aws:s3:::*"
+  }
+  ]
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
 
